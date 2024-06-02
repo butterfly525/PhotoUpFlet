@@ -1,18 +1,16 @@
+import base64
+
 import flet as ft
 from flet import FilePicker, FilePickerResultEvent
 from PIL import Image, ImageFilter
-
+import io
 
 image_history = []  # Массив для хранения всех изменений изображения
-    
-    # Переменная для хранения выбранного изображения
-selected_image = None
-    # Функция для обработки выбора файла
+selected_image = None  # Переменная для хранения выбранного изображения
 current_state = -1  # Индекс текущего состояния изображения
 
+
 def main(page: ft.Page):
-    
-    
     def pick_files_result(e: FilePickerResultEvent):
         global image_history, selected_image, current_state
         selected_files = e.files
@@ -21,15 +19,8 @@ def main(page: ft.Page):
             image_history.append(selected_image.copy())
             current_state += 1
             image_container.content = ft.Image(src=selected_files[0].path)
+            update_history_container()
             page.update()
-
-    # Функция для обработки сохранения файла
-    def save_file_result(e: FilePickerResultEvent):
-        if e.path and selected_image:
-            with open(selected_image, "rb") as f:
-                data = f.read()
-            with open(e.path, "wb") as f:
-                f.write(data)
 
     # Функция для показа диалогового окна выбора формата сохранения
     def show_format_dialog():
@@ -39,20 +30,34 @@ def main(page: ft.Page):
                 content=format_dropdown,
                 actions=[
                     ft.TextButton("Отмена", on_click=close_dialog),
-                    ft.TextButton("Сохранить", on_click=lambda _: save_file())
+                    ft.TextButton("Сохранить", on_click=lambda _: show_save_file_dialog())
                 ]
             )
             page.dialog.open = True
             page.update()
 
-    # Функция для сохранения файла с выбранным форматом
-    def save_file():
-        if selected_image:
-            close_dialog()
-            save_file_picker.save_file(
-                file_name=f"image.{format_dropdown.value.lower()}",
-                allowed_extensions=[format_dropdown.value.lower()]
-            )
+        # Функция для показа диалогового окна выбора места сохранения файла
+
+    def show_save_file_dialog():
+        close_dialog()
+        save_file_picker.save_file(
+            file_name=f"image.{format_dropdown.value.lower()}",
+            allowed_extensions=[format_dropdown.value.lower()]
+        )
+
+        # Функция для обработки сохранения файла
+
+    def save_file_result(e: FilePickerResultEvent):
+        global selected_image
+        if e.path and selected_image:
+            # Получаем выбранный формат сохранения
+            chosen_format = format_dropdown.value.lower()
+            # Проверяем, является ли выбранный формат JPEG или JPG
+            if chosen_format in ['jpeg', 'jpg']:
+                # Конвертируем изображение в режим RGB, если оно в режиме RGBA
+                if selected_image.mode == 'RGBA':
+                    selected_image = selected_image.convert('RGB')
+            selected_image.save(e.path)
 
     # Функция для закрытия диалогового окна
     def close_dialog(e=None):
@@ -75,6 +80,7 @@ def main(page: ft.Page):
 
     # Функция для очистки поля с изображением
     def clear_field():
+        global selected_image
         selected_image = None
         image_container.content = None
         close_dialog()
@@ -93,46 +99,87 @@ def main(page: ft.Page):
     def apply_gaussian_filter():
         global selected_image, current_state, image_history
         if selected_image:
-            selected_image = selected_image.filter(
-                ImageFilter.GaussianBlur(radius=slider.value))
+            selected_image = selected_image.filter(ImageFilter.GaussianBlur(radius=slider.value))
             image_history.append(selected_image.copy())
             current_state += 1
-             # Проверяем, является ли изображение в режиме RGBA
-            if selected_image.mode == 'RGBA':
-                # Конвертируем изображение в режим RGB
-                rgb_image = selected_image.convert('RGB')
-                # Обновляем контент контейнера с конвертированным изображением
-                image_container.content = ft.Image(src=rgb_image.tobytes())
-                
-            else:
-                # Если изображение уже в режиме RGB, просто обновляем контент контейнера
-                image_container.content = ft.Image(src=selected_image.tobytes())
+            img_byte_arr = io.BytesIO()
+            selected_image.save(img_byte_arr, format='PNG')
+            img_byte_arr = img_byte_arr.getvalue()
+            # Кодирование байтов в base64
+            img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
+
+            # Отображение изображения в image_container
+            image_container.content = ft.Image(src_base64=img_base64)
+            update_history_container()
             page.update()
-            
+        update_button_states()
+
     def apply_button_clicked(e):
+        global image_history
         if dropdown.value == "Фильтр Гаусса":
+            if current_state < len(image_history) - 1:
+                image_history = image_history[:current_state + 1]
             apply_gaussian_filter()
+            print(image_history)
         else:
             # Добавьте здесь обработчики для других фильтров
             pass
-    
+        update_button_states()
+
     def undo_button_clicked(e):
         global selected_image, image_history, current_state
         if current_state > 0:
             current_state -= 1
             selected_image = image_history[current_state]
-            selected_image.save("undo_image.jpg")
-            image_container.content = ft.Image(src="undo_image.jpg")
+            # Преобразование изображения в байты
+            img_byte_arr = io.BytesIO()
+            selected_image.save(img_byte_arr, format='PNG')
+            img_byte_arr = img_byte_arr.getvalue()
+            # Кодирование байтов в base64
+            img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
+            # Отображение изображения в image_container
+            image_container.content = ft.Image(src_base64=img_base64)
+            update_history_container()
             page.update()
+        update_button_states()
 
     def redo_button_clicked(e):
         global selected_image, image_history, current_state
         if current_state < len(image_history) - 1:
             current_state += 1
             selected_image = image_history[current_state]
-            selected_image.save("redo_image.jpg")
-            image_container.content = ft.Image(src="redo_image.jpg")
+            # Преобразование изображения в байты
+            img_byte_arr = io.BytesIO()
+            selected_image.save(img_byte_arr, format='PNG')
+            img_byte_arr = img_byte_arr.getvalue()
+            # Кодирование байтов в base64
+            img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
+            # Отображение изображения в image_container
+            image_container.content = ft.Image(src_base64=img_base64)
+            update_history_container()
             page.update()
+        update_button_states()
+
+    def update_button_states():
+        undo_button.disabled = current_state == 0
+        redo_button.disabled = current_state == len(image_history) - 1
+        page.update()
+
+    def update_history_container():
+        history_container.content.controls = []
+        for i, image in enumerate(image_history):
+            img_byte_arr = io.BytesIO()
+            image.save(img_byte_arr, format='PNG')
+            img_byte_arr = img_byte_arr.getvalue()
+            img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
+            image_widget = ft.Image(src_base64=img_base64)
+            container = ft.Container(
+                content=image_widget,
+                border=ft.border.all(2, ft.colors.BLUE) if i == current_state else None,
+                border_radius=ft.border_radius.all(10),
+            )
+            history_container.content.controls.append(container)
+        page.update()
 
     page.title = "Редактор изображений"
 
@@ -146,7 +193,6 @@ def main(page: ft.Page):
         bgcolor=None,
         alignment=ft.alignment.center
     )
-
 
     # Диалоговое окно выбора файла
     file_picker = FilePicker(on_result=pick_files_result)
@@ -177,8 +223,8 @@ def main(page: ft.Page):
         text="Очистить поле", on_click=lambda _: show_clear_confirmation())
 
     # Остальные кнопки и элементы
-    undo_button = ft.ElevatedButton(text="Отменить", on_click=undo_button_clicked)
-    redo_button = ft.ElevatedButton(text="Повторить", on_click=redo_button_clicked)
+    undo_button = ft.ElevatedButton(text="Отменить", on_click=undo_button_clicked, disabled=True)
+    redo_button = ft.ElevatedButton(text="Повторить", on_click=redo_button_clicked, disabled=True)
 
     dropdown = ft.Dropdown(
         options=[
@@ -204,11 +250,25 @@ def main(page: ft.Page):
         [dropdown, slider, apply_button],
         alignment=ft.MainAxisAlignment.CENTER
     )
-
+    # Контейнер для отображения истории изменений изображения
+    history_container = ft.Container(
+        height=220,
+        width=page.window_width,
+        bgcolor=None,
+        content=ft.GridView(
+            auto_scroll=True,
+            expand=True,
+            run_spacing=10,
+            max_extent=300,
+            child_aspect_ratio=1.0,
+            controls=[],
+            horizontal=True
+        ),
+    )
     # Добавление виджетов на страницу в центрированный столбец
     page.add(
         ft.Column(
-            [button_row, edit_options_row, image_container, history_slider],
+            [button_row, edit_options_row, image_container, history_container],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER
         ),
