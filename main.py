@@ -1,29 +1,48 @@
 import base64
+from random import random
+
 import flet as ft
 from flet import FilePicker, FilePickerResultEvent
 from PIL import Image, ImageFilter
-import io
+import io, os
 import ctypes
 import numpy as np
+import random
 image_history = []  # Массив для хранения всех изменений изображения
 selected_image = None  # Переменная для хранения выбранного изображения
 current_state = -1  # Индекс текущего состояния изображения
-
+temp_image_history = []
 
 def main(page: ft.Page):
     def pick_files_result(e: FilePickerResultEvent):
         global image_history, selected_image, current_state
         selected_files = e.files
         if selected_files:
+            if current_state < len(image_history) - 1:
+                for i in range(current_state+1, len(image_history)):
+                    file_path = image_history[i]
+                    try:
+                        os.remove(file_path)
+                    except OSError as e:
+                        print(f"Ошибка при удалении файла: {e.strerror}")
+
+                image_history = image_history[:current_state + 1]
+
             selected_image = Image.open(selected_files[0].path)
-            image_history.append(selected_image.copy())
+
             current_state += 1
+            file_name = './temp_files/file_' + str(random.randint(1, 100)) + '_' + str(current_state) + '.' + selected_image.format
+            selected_image.save(file_name, selected_image.format)
+            image_history.append(file_name)
+
             image_container.content = ft.Image(src=selected_files[0].path)
+            update_button_states()
             update_history_container()
             page.update()
     # Функция для показа диалогового окна выбора формата сохранения
 
     def show_format_dialog():
+        global selected_image
         if selected_image:
             page.dialog = ft.AlertDialog(
                 title=ft.Text("Выберите формат сохранения"),
@@ -67,6 +86,7 @@ def main(page: ft.Page):
 
     # Функция для показа диалогового окна подтверждения очистки поля
     def show_clear_confirmation():
+        global selected_image
         if selected_image:
             page.dialog = ft.AlertDialog(
                 title=ft.Text("Подтвердите очистку поля"),
@@ -81,135 +101,128 @@ def main(page: ft.Page):
 
     # Функция для очистки поля с изображением
     def clear_field():
-        global selected_image
+        global selected_image, image_history, current_state
         selected_image = None
         image_container.content = None
+        history_container.content.controls = []
+        image_history = []
+        current_state = -1
         close_dialog()
         page.update()
 
     def dropdown_changed(e):
         if e.control.value == "Фильтр Гаусса":
-            slider.min = 0
+            slider.min = 1
             slider.max = 10
-        else:
+        elif e.control.value == "dll":
             # Установите здесь значения по умолчанию или для других фильтров
-            slider.min = 0
-            slider.max = 100
+            slider.min = 1
+            slider.max = 10
         page.update()
 
     def undo_button_clicked(e):
-        global selected_image, image_history, current_state
+        global image_history, current_state, selected_image
         if current_state > 0:
             current_state -= 1
-            selected_image = image_history[current_state]
-            # Преобразование изображения в байты
-            img_byte_arr = io.BytesIO()
-            selected_image.save(img_byte_arr, format='PNG')
-            img_byte_arr = img_byte_arr.getvalue()
-            # Кодирование байтов в base64
-            img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
-            # Отображение изображения в image_container
-            image_container.content = ft.Image(src_base64=img_base64)
-            update_history_container()
-            page.update()
+            image_container.content = ft.Image(src=image_history[current_state])
+            selected_image = Image.open(image_history[current_state])
+        update_history_container()
         update_button_states()
+        page.update()
 
     def redo_button_clicked(e):
-        global selected_image, image_history, current_state
+        global image_history, current_state, selected_image
         if current_state < len(image_history) - 1:
             current_state += 1
-            selected_image = image_history[current_state]
-            # Преобразование изображения в байты
-            img_byte_arr = io.BytesIO()
-            selected_image.save(img_byte_arr, format='PNG')
-            img_byte_arr = img_byte_arr.getvalue()
-            # Кодирование байтов в base64
-            img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
-            # Отображение изображения в image_container
-            image_container.content = ft.Image(src_base64=img_base64)
-            update_history_container()
-            page.update()
+            image_container.content = ft.Image(src=image_history[current_state])
+            selected_image = Image.open(image_history[current_state])
+        update_history_container()
         update_button_states()
+        page.update()
 
     def update_button_states():
+        global image_history, current_state
         undo_button.disabled = current_state == 0
         redo_button.disabled = current_state == len(image_history) - 1
         page.update()
 
     def update_history_container():
+        global image_history, current_state, selected_image
         history_container.content.controls = []
-        for i, image in enumerate(image_history):
-            img_byte_arr = io.BytesIO()
-            image.save(img_byte_arr, format='PNG')
-            img_byte_arr = img_byte_arr.getvalue()
-            img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
-            image_widget = ft.Image(src_base64=img_base64)
-            container = ft.Container(
-                content=image_widget,
-                border=ft.border.all(
-                    2, ft.colors.BLUE) if i == current_state else None,
-                border_radius=ft.border_radius.all(10),
-            )
-            history_container.content.controls.append(container)
+
+        if current_state < len(image_history) - 1:
+            for i in range(len(image_history[:current_state+1])):
+                selected_image = Image.open(image_history[i])
+
+                image_widget = ft.Image(src=image_history[i])
+                container = ft.Container(
+                    content=image_widget,
+                    border=ft.border.all(2, ft.colors.BLUE) if i == current_state else None,
+                    border_radius=ft.border_radius.all(10),
+                )
+                history_container.content.controls.append(container)
+        else:
+            for i, image in enumerate(image_history):
+                selected_image = Image.open(image_history[i])
+
+                image_widget = ft.Image(src=image)
+                container = ft.Container(
+                    content=image_widget,
+                    border=ft.border.all(2, ft.colors.BLUE) if i == current_state else None,
+                    border_radius=ft.border_radius.all(10),
+                )
+                history_container.content.controls.append(container)
         page.update()
-
     def apply_gaussian_filter():
-        global selected_image, current_state, image_history
-        if selected_image:
-            selected_image = selected_image.filter(
-                ImageFilter.GaussianBlur(radius=slider.value))
-            image_history.append(selected_image.copy())
-            current_state += 1
-            img_byte_arr = io.BytesIO()
-            selected_image.save(img_byte_arr, format='PNG')
-            img_byte_arr = img_byte_arr.getvalue()
-            # Кодирование байтов в base64
-            img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
-
-            # Отображение изображения в image_container
-            image_container.content = ft.Image(src_base64=img_base64)
-            update_history_container()
-            page.update()
-        update_button_states()
-
+        global current_state, image_history, selected_image
+        image = Image.open(image_history[current_state])
+        format_img = image.format
+        image = image.filter(ImageFilter.GaussianBlur(radius=slider.value))
+        current_state += 1
+        file_name = './temp_files/file_' + str(random.randint(1, 100)) + '_'  + str(current_state) + '.' + format_img
+        image.save(file_name, format_img)
+        image_history.append(file_name)
+        image_container.content = ft.Image(src=image_history[current_state])
+        selected_image = Image.open(image_history[current_state])
     def apply_dll():
-        global current_state, image_history
-        rgb_image = image_history[current_state].convert('RGB')
+        global current_state, image_history, selected_image
+        image = Image.open(image_history[current_state])
+        format_img = image.format
+        rgb_image = image.convert('RGB')
         rgb_array = np.array(rgb_image)
         # Загрузка DLL
         my_dll = ctypes.CDLL('.\Dll1.dll')
-
         # Определение сигнатур функций
-        my_dll.process_image.argtypes = [ctypes.POINTER(ctypes.c_uint8), ctypes.c_int, ctypes.c_int, ctypes.c_int]
-        my_dll.process_image.restype = None
-
+        my_dll.apply_gaussian_filter.argtypes = [ctypes.POINTER(ctypes.c_uint8), ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
+        my_dll.apply_gaussian_filter.restype = None
         # Вызов функции из DLL
-        my_dll.process_image(rgb_array.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)), rgb_array.shape[1], rgb_array.shape[0], rgb_array.shape[2])
+        # Применяем фильтр Гаусса
+        my_dll.apply_gaussian_filter(rgb_array.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)), rgb_array.shape[1], rgb_array.shape[0], rgb_array.shape[2], 1.0)
         image = Image.fromarray(rgb_array)
-        image_history.append(image.copy())
         current_state += 1
-        img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='PNG')
-        img_byte_arr = img_byte_arr.getvalue()
-        # Кодирование байтов в base64
-        img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
+        file_name = './temp_files/file_' + str(random.randint(1, 100)) + '_' + str(current_state) + '.' + format_img
+        image.save(file_name, format_img)
+        image_history.append(file_name)
+        image_container.content = ft.Image(src=image_history[current_state])
+        selected_image = Image.open(image_history[current_state])
 
-        # Отображение изображения в image_container
-        image_container.content = ft.Image(src_base64=img_base64)
-        update_history_container()
-        page.update()
-        update_button_states()
     def apply_button_clicked(e):
-        global image_history
+        global image_history, current_state
+        if current_state < len(image_history) - 1:
+            for i in range(current_state + 1, len(image_history)):
+                file_path = image_history[i]
+                try:
+                    os.remove(file_path)
+                except OSError as e:
+                    print(f"Ошибка при удалении файла: {e.strerror}")
+            image_history = image_history[:current_state + 1]
         if dropdown.value == "Фильтр Гаусса":
-            if current_state < len(image_history) - 1:
-                image_history = image_history[:current_state + 1]
             apply_gaussian_filter()
         elif dropdown.value == "dll":
-            # Добавьте здесь обработчики для других фильтров
             apply_dll()
         update_button_states()
-
+        update_history_container()
+        page.update()
     page.title = "Редактор изображений"
 
     # Устанавливаем окно приложения во весь экран
@@ -268,7 +281,6 @@ def main(page: ft.Page):
 
     apply_button = ft.ElevatedButton(
         text="Применить", on_click=apply_button_clicked)
-    history_slider = ft.Slider(min=0, max=10, divisions=10, label="{value}")
 
     # Верхняя строка с кнопками
     button_row = ft.Row(
