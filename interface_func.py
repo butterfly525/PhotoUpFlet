@@ -14,6 +14,7 @@ current_state = -1  # Индекс текущего состояния изоб�
 temp_image_history = []
 
 
+# Выбор изображения из проводника
 def pick_files_result(e: FilePickerResultEvent, undo_button: ft.ElevatedButton, redo_button: ft.ElevatedButton, image_container: ft.Container, page: ft.Page, history_container: ft.Container):
     global image_history, selected_image, current_state
     selected_files = e.files
@@ -44,9 +45,8 @@ def pick_files_result(e: FilePickerResultEvent, undo_button: ft.ElevatedButton, 
         update_history_container(history_container, page)
         page.update()
 
+
 # Функция для показа диалогового окна выбора формата сохранения
-
-
 def show_format_dialog(page: ft.Page, format_dropdown: ft.Dropdown, save_file_picker: FilePicker):
     global selected_image
     if selected_image:
@@ -63,6 +63,7 @@ def show_format_dialog(page: ft.Page, format_dropdown: ft.Dropdown, save_file_pi
         page.update()
 
 
+# Обновляет состояние кнопок отмены  и повтора
 def update_button_states(undo_button: ft.ElevatedButton, redo_button: ft.ElevatedButton, page: ft.Page):
     global image_history, current_state
     undo_button.disabled = current_state == 0
@@ -70,6 +71,7 @@ def update_button_states(undo_button: ft.ElevatedButton, redo_button: ft.Elevate
     page.update()
 
 
+# Обновляет контейнер с историей изменений
 def update_history_container(history_container: ft.Container, page: ft.Page):
     global image_history, current_state, selected_image
     history_container.content.controls = []
@@ -98,20 +100,7 @@ def update_history_container(history_container: ft.Container, page: ft.Page):
     page.update()
 
 
-def dropdown_changed(e, slider: ft.Slider, page: ft.Page):
-    if e.control.value == "Фильтр Гаусса":
-        slider.min = 1
-        slider.max = 10
-        slider.disabled = False
-    elif e.control.value == "Autolevel":
-        slider.min = 1
-        slider.max = 10
-        slider.disabled = True
-    page.update()
-
 # Функция для показа диалогового окна выбора места сохранения файла
-
-
 def show_save_file_dialog(save_file_picker: FilePicker, format_dropdown: ft.Dropdown, page: ft.Page):
     close_dialog(page)
     save_file_picker.save_file(
@@ -134,16 +123,14 @@ def save_file_result(e: FilePickerResultEvent, format_dropdown: ft.Dropdown):
                 selected_image = selected_image.convert('RGB')
         selected_image.save(e.path)
 
+
 # Функция для закрытия диалогового окна
-
-
 def close_dialog(e, page: ft.Page):
     page.dialog.open = False
     page.update()
 
+
 # Функция для показа диалогового окна подтверждения очистки поля
-
-
 def show_clear_confirmation(page: ft.Page, image_container: ft.Container, history_container: ft.Container):
     global selected_image
     if selected_image:
@@ -151,27 +138,27 @@ def show_clear_confirmation(page: ft.Page, image_container: ft.Container, histor
             title=ft.Text("Подтвердите очистку поля"),
             content=ft.Image(src=selected_image),
             actions=[
-                ft.TextButton("Отмена", on_click=close_dialog(page)),
-                ft.TextButton("Очистить", on_click=lambda _: clear_field(image_container, history_container, page))
+                ft.TextButton("Отмена",  on_click=lambda e: close_dialog(e, page)),
+                ft.TextButton("Очистить", on_click=lambda e: clear_field(e, image_container, history_container, page))
             ]
         )
         page.dialog.open = True
         page.update()
 
+
 # Функция для очистки поля с изображением
-
-
-def clear_field(image_container: ft.Container, history_container: ft.Container, page: ft.Page):
+def clear_field(e, image_container: ft.Container, history_container: ft.Container, page: ft.Page):
     global selected_image, image_history, current_state
     selected_image = None
     image_container.content = None
     history_container.content.controls = []
     image_history = []
     current_state = -1
-    close_dialog(page)
+    close_dialog(e, page)
     page.update()
 
 
+#Функция отмены применения фильтра
 def undo_button_clicked(image_container: ft.Container, history_container: ft.Container, page: ft.Page, undo_button: ft.ElevatedButton, redo_button: ft.ElevatedButton):
     global image_history, current_state, selected_image
     if current_state > 0:
@@ -183,6 +170,7 @@ def undo_button_clicked(image_container: ft.Container, history_container: ft.Con
     page.update()
 
 
+#Функция повтора применения фильтра
 def redo_button_clicked(image_container: ft.Container, history_container: ft.Container, page: ft.Page, undo_button: ft.ElevatedButton, redo_button: ft.ElevatedButton):
     global image_history, current_state, selected_image
     if current_state < len(image_history) - 1:
@@ -193,6 +181,36 @@ def redo_button_clicked(image_container: ft.Container, history_container: ft.Con
     update_button_states(undo_button, redo_button, page)
     page.update()
 
+
+def dropdown_changed(e, slider: ft.Slider, page: ft.Page):
+    if e.control.value == "Фильтр Гаусса":
+        slider.min = 1
+        slider.max = 10
+        slider.disabled = False
+    elif e.control.value == "Линейное контрастное растяжение":
+        slider.disabled = True
+    elif e.control.value == "Эквализация гистограммы":
+        slider.disabled = True
+    elif e.control.value == "Адаптивная эквализация гистограммы":
+        slider.min = 1
+        slider.max = 10
+        slider.disabled = False
+    elif e.control.value == "Удаление артефактов":
+        slider.min = 1
+        slider.max = 10
+        slider.disabled = False
+    elif e.control.value == "Улучшение контрастности (BCET)":
+        slider.disabled = True
+    elif e.control.value == "Single Scale Retinex":
+        slider.min = 1
+        slider.max = 500
+        slider.disabled = False
+    elif e.control.value == "Multi Scale Retinex":
+        slider.min = 1
+        slider.max = 500
+        slider.disabled = False
+        
+    page.update()
 
 def apply_button_clicked(e, dropdown: ft.Dropdown, image_container: ft.Container, history_container: ft.Container, page: ft.Page, undo_button: ft.ElevatedButton, redo_button: ft.ElevatedButton, slider: ft.Slider):
     global current_state, image_history, selected_image
@@ -209,8 +227,22 @@ def apply_button_clicked(e, dropdown: ft.Dropdown, image_container: ft.Container
     format_img = image.format
     if dropdown.value == "Фильтр Гаусса":
         image = apply_gaussian_filter(image, slider)
-    elif dropdown.value == "Autolevel":
+    elif dropdown.value == "Линейное контрастное растяжение":
         image = apply_autolevel_filter(image)
+    elif dropdown.value == "Эквализация гистограммы":
+        image = apply_histogram_equalization(image)
+    elif dropdown.value == "Адаптивная эквализация гистограммы":
+        image = apply_clahe(image, slider)
+    elif dropdown.value == "Удаление артефактов":
+        image = apply_artifact_removal(image, slider)
+    elif dropdown.value == "Улучшение контрастности (BCET)":
+        image = apply_contrast_enhancement(image)
+    elif dropdown.value == "Single Scale Retinex":
+        image = SSR(image, slider)
+    elif dropdown.value == "Multi Scale Retinex":
+        image = MSR(image, slider)
+        
+        
     current_state += 1
     now = datetime.now()
     date_part = now.strftime('%d%m')
